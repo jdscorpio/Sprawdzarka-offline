@@ -1,0 +1,14 @@
+{
+    "time_limit": 1.0,
+    "memory_limit": 32,
+    "in_dir": "zadanie/in",
+    "out_dir": "zadanie/out",
+    "problem_name": "Dodawanie dwóch liczb",
+    "test_groups": null,
+    "compilers": {
+        "cpp": ["g++", "-O2", "-std=c++17", "-o"],
+        "c":   ["gcc", "-O2", "-o"],
+        "java": ["javac", "-d"],
+        "pascal": ["fpc"]
+    }
+}

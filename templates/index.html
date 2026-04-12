@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="pl" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sprawdzarka Offline – {{ problem_name }}</title>
+
+  <!-- Bootstrap 5 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+  <!-- CodeMirror -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/theme/dracula.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/theme/eclipse.min.css" />
+
+  <!-- Wczytaj zapisany motyw przed renderowaniem (bez migotania) -->
+  <script>
+    (function() {
+      const t = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+
+  <style>
+    :root,
+    [data-theme="dark"] {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --border:   #30363d;
+      --text:     #e6edf3;
+      --muted:    #8b949e;
+      --accent:   #58a6ff;
+      --green:    #3fb950;
+      --red:      #f85149;
+      --yellow:   #d29922;
+      --purple:   #bc8cff;
+      --cm-theme: dracula;
+      --detail-bg: rgba(0,0,0,.3);
+      --ce-v-bg:  rgba(20,20,20,.6);
+      --ce-v-col: #aaa;
+      --ce-v-brd: #444;
+    }
+
+    [data-theme="light"] {
+      --bg:       #f6f8fa;
+      --surface:  #ffffff;
+      --border:   #d0d7de;
+      --text:     #1f2328;
+      --muted:    #636c76;
+      --accent:   #0969da;
+      --green:    #1a7f37;
+      --red:      #d1242f;
+      --yellow:   #9a6700;
+      --purple:   #8250df;
+      --cm-theme: eclipse;
+      --detail-bg: rgba(0,0,0,.04);
+      --ce-v-bg:  rgba(200,200,200,.5);
+      --ce-v-col: #555;
+      --ce-v-brd: #bbb;
+    }
+
+    /* Płynne przejście przy zmianie motywu */
+    body, .top-bar, .footer, .editor-toolbar, .results-panel,
+    .results-header, .score-card, .test-item, .test-detail,
+    .detail-code, .pdf-modal, .pdf-modal-header {
+      transition: background .2s, border-color .2s, color .2s;
+    }
+
+    /* ── Przycisk motywu ── */
+    .theme-toggle {
+      margin-left: auto;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: .82rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all .15s;
+    }
+    .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Nagłówek ── */
+    .top-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .top-bar .logo { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
+    .top-bar .meta { font-size: .85rem; color: var(--muted); }
+    .top-bar .badge-tl {
+      background: rgba(88,166,255,.15);
+      color: var(--accent);
+      border: 1px solid rgba(88,166,255,.35);
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: .78rem;
+    }
+
+    /* ── Stopka ── */
+    .footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      font-size: .75rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+    .footer .sep { opacity: .3; }
+    .footer strong { color: var(--text); }
+    .footer .req-list {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .footer .req-tag {
+      background: rgba(88,166,255,.08);
+      border: 1px solid rgba(88,166,255,.2);
+      border-radius: 4px;
+      padding: 1px 7px;
+      font-size: .7rem;
+      color: var(--accent);
+    }
+    .footer .author {
+      margin-left: auto;
+      color: var(--muted);
+    }
+    .footer .author strong { color: var(--purple); }
+
+    /* ── Przycisk PDF ── */
+    .pdf-btn {
+      background: rgba(188,140,255,.12);
+      color: var(--purple);
+      border: 1px solid rgba(188,140,255,.35);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: .82rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all .15s;
+      text-decoration: none;
+    }
+    .pdf-btn:hover {
+      background: rgba(188,140,255,.25);
+      color: var(--purple);
+      border-color: var(--purple);
+    }
+
+    /* ── Modal PDF ── */
+    .pdf-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.75);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .pdf-modal-overlay.open { display: flex; }
+    .pdf-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: min(960px, 95vw);
+      height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,.6);
+    }
+    .pdf-modal-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .pdf-modal-title {
+      font-weight: 600;
+      font-size: .9rem;
+      color: var(--purple);
+      flex: 1;
+    }
+    .pdf-icon-color { color: var(--purple); }
+    .pdf-modal-actions { display: flex; gap: 8px; }
+    .pdf-action-btn {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: .8rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      text-decoration: none;
+      transition: all .15s;
+    }
+    .pdf-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .pdf-close-btn {
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+      transition: color .15s;
+    }
+    .pdf-close-btn:hover { color: var(--red); }
+    .pdf-frame {
+      flex: 1;
+      border: none;
+      background: #fff;
+    }
+
+    /* ── Layout ── */
+    .page-wrap {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 57px);
+    }
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      grid-template-rows: auto 1fr;
+      gap: 0;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Panel edytora ── */
+    .editor-panel {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .editor-toolbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .editor-toolbar label { font-size: .82rem; color: var(--muted); margin: 0; }
+
+    select.lang-select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: .88rem;
+      cursor: pointer;
+    }
+    select.lang-select:focus { outline: none; border-color: var(--accent); }
+
+    .upload-btn {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: .82rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all .15s;
+    }
+    .upload-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #file-input { display: none; }
+
+    .submit-btn {
+      margin-left: auto;
+      background: var(--green);
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 22px;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .submit-btn:hover { opacity: .85; }
+    .submit-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .CodeMirror {
+      flex: 1;
+      height: 100%;
+      font-size: 14px;
+      font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+    }
+    .CodeMirror-scroll { height: 100%; }
+    #editor-wrap { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+    /* ── Panel wyników ── */
+    .results-panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--surface);
+    }
+    .results-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: .85rem;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    .results-body { flex: 1; overflow-y: auto; padding: 12px; }
+
+    /* ── Karta wyniku ── */
+    .score-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .score-number {
+      font-size: 3rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .score-max { font-size: 1.1rem; color: var(--muted); }
+    .score-bar-wrap { margin-top: 12px; background: var(--border); border-radius: 99px; height: 8px; }
+    .score-bar { height: 8px; border-radius: 99px; transition: width .6s ease; }
+    .lang-badge {
+      display: inline-block;
+      background: rgba(188,140,255,.15);
+      color: var(--purple);
+      border: 1px solid rgba(188,140,255,.3);
+      border-radius: 99px;
+      padding: 2px 10px;
+      font-size: .78rem;
+      margin-top: 8px;
+    }
+
+    /* ── Lista testów ── */
+    .test-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      margin-bottom: 5px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: border-color .1s;
+    }
+    .test-item:hover { border-color: var(--accent); }
+    .test-item.expanded { border-color: var(--accent); }
+
+    .verdict-badge {
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .05em;
+      padding: 2px 7px;
+      border-radius: 5px;
+      min-width: 38px;
+      text-align: center;
+    }
+    .v-AC  { background: rgba(63,185,80,.2);  color: #3fb950; border: 1px solid rgba(63,185,80,.4); }
+    .v-WA  { background: rgba(248,81,73,.2);  color: #f85149; border: 1px solid rgba(248,81,73,.4); }
+    .v-TLE { background: rgba(210,153,34,.2); color: #d29922; border: 1px solid rgba(210,153,34,.4); }
+    .v-RE  { background: rgba(139,148,158,.2);color: #8b949e; border: 1px solid rgba(139,148,158,.4); }
+    .v-CE  { background: var(--ce-v-bg);  color: var(--ce-v-col); border: 1px solid var(--ce-v-brd); }
+    .v-IE  { background: rgba(88,166,255,.15);color: #58a6ff; border: 1px solid rgba(88,166,255,.3); }
+
+    .test-name { font-weight: 600; font-size: .88rem; flex: 1; }
+    .test-time { font-size: .78rem; color: var(--muted); }
+    .test-pts  { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+
+    .test-detail {
+      background: var(--detail-bg);
+      border-top: 1px solid var(--border);
+      border-radius: 0 0 8px 8px;
+      padding: 10px 12px;
+      font-size: .8rem;
+      color: var(--muted);
+      display: none;
+    }
+    .test-detail.open { display: block; }
+    .detail-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+    .detail-code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 5px 9px;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: .78rem;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-bottom: 8px;
+    }
+
+    /* ── Błąd kompilacji ── */
+    .ce-block {
+      background: rgba(248,81,73,.07);
+      border: 1px solid rgba(248,81,73,.3);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: .8rem;
+      color: #f85149;
+      white-space: pre-wrap;
+      margin-bottom: 12px;
+    }
+
+    /* ── Stan pusty / ładowanie ── */
+    .placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--muted);
+      text-align: center;
+      gap: 10px;
+    }
+    .placeholder i { font-size: 2.5rem; opacity: .4; }
+    .placeholder p { font-size: .88rem; }
+
+    .spinner-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 14px;
+      color: var(--muted);
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+    /* ── Responsywność ── */
+    @media (max-width: 900px) {
+      .main-layout { grid-template-columns: 1fr; grid-template-rows: 50vh 1fr; }
+      .editor-panel { border-right: none; border-bottom: 1px solid var(--border); }
+      .footer { gap: 10px; }
+      .footer .author { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ Nagłówek ══════════════════════════════════════════ -->
+<div class="top-bar">
+  <div class="logo"><i class="bi bi-braces"></i> Sprawdzarka Offline</div>
+  <div class="meta">{{ problem_name }}</div>
+  <div class="badge-tl"><i class="bi bi-clock"></i> {{ time_limit }}s</div>
+  <div class="badge-tl" id="tc-badge">
+    <i class="bi bi-file-earmark-text"></i>
+    <span id="tc-count">{{ test_count }}</span> test{{ 'y' if test_count in [2,3,4] else ('ów' if test_count != 1 else '') }}
+  </div>
+  <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Przełącz motyw">
+    <i class="bi bi-sun" id="theme-icon"></i>
+    <span id="theme-label">Dzienny</span>
+  </button>
+  {% if has_pdf %}
+  <button class="pdf-btn" onclick="openPdf()">
+    <i class="bi bi-file-earmark-pdf"></i> Treść zadania
+  </button>
+  {% endif %}
+</div>
+
+{% if has_pdf %}
+<!-- ══ Modal PDF ═══════════════════════════════════════════ -->
+<div class="pdf-modal-overlay" id="pdf-overlay" onclick="closePdfOnBg(event)">
+  <div class="pdf-modal">
+    <div class="pdf-modal-header">
+      <i class="bi bi-file-earmark-pdf pdf-icon-color"></i>
+      <span class="pdf-modal-title">{{ pdf_name }}</span>
+      <div class="pdf-modal-actions">
+        <a class="pdf-action-btn" href="/pdf" target="_blank">
+          <i class="bi bi-box-arrow-up-right"></i> Otwórz w nowej karcie
+        </a>
+        <a class="pdf-action-btn" href="/pdf" download="{{ pdf_name }}">
+          <i class="bi bi-download"></i> Pobierz
+        </a>
+      </div>
+      <button class="pdf-close-btn" onclick="closePdf()" title="Zamknij">&times;</button>
+    </div>
+    <iframe class="pdf-frame" id="pdf-frame" src="" title="Treść zadania"></iframe>
+  </div>
+</div>
+{% endif %}
+
+<!-- ══ Główny układ + stopka ════════════════════════════════ -->
+<div class="page-wrap">
+<div class="main-layout">
+
+  <!-- ── Lewa: edytor ── -->
+  <div class="editor-panel">
+    <div class="editor-toolbar">
+      <label for="lang-select"><i class="bi bi-code-slash"></i> Język:</label>
+      <select id="lang-select" class="lang-select" onchange="onLangChange()">
+        <option value="cpp">C++</option>
+        <option value="c">C</option>
+        <option value="python">Python 3</option>
+        <option value="java">Java</option>
+        <option value="pascal">Pascal</option>
+      </select>
+
+      <button class="upload-btn" onclick="document.getElementById('file-input').click()">
+        <i class="bi bi-upload"></i> Wgraj plik
+      </button>
+      <input type="file" id="file-input" accept=".cpp,.cc,.cxx,.c,.py,.java,.pas"
+             onchange="loadFile(event)" />
+
+      <button id="submit-btn" class="submit-btn" onclick="submitCode()">
+        <i class="bi bi-play-fill"></i> Oceń
+      </button>
+    </div>
+
+    <div id="editor-wrap">
+      <textarea id="code-editor" aria-label="Edytor kodu"></textarea>
+    </div>
+  </div>
+
+  <!-- ── Prawa: wyniki ── -->
+  <div class="results-panel">
+    <div class="results-header"><i class="bi bi-bar-chart-line"></i> Wyniki</div>
+    <div class="results-body" id="results-body">
+      <div class="placeholder" id="placeholder">
+        <i class="bi bi-send-arrow-up"></i>
+        <p>Wklej kod lub wgraj plik,<br>następnie kliknij <strong>Oceń</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main-layout -->
+
+<!-- ══ Stopka ════════════════════════════════════════════ -->
+<footer class="footer">
+  <span><i class="bi bi-braces"></i> <strong>Sprawdzarka Offline</strong></span>
+  <span class="sep">|</span>
+  <span>Wymagania:</span>
+  <div class="req-list">
+    <span class="req-tag">Python 3.10+</span>
+    <span class="req-tag">Flask 3+</span>
+    <span class="req-tag">Rich 13+</span>
+    <span class="req-tag">g++ / gcc</span>
+    <span class="req-tag">Java (opcjonalnie)</span>
+    <span class="req-tag">Free Pascal (opcjonalnie)</span>
+  </div>
+  <span class="sep">|</span>
+  <span class="author">Autor: <strong>Jarosław Drzeżdżon</strong></span>
+</footer>
+
+</div><!-- /page-wrap -->
+
+<!-- ══ Skrypty ════════════════════════════════════════════ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/clike/clike.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/pascal/pascal.min.js"></script>
+
+<script>
+// ── Inicjalizacja edytora ─────────────────────────────────
+const STARTER = {
+  cpp: `#include <iostream>
+using namespace std;
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+    
+    // Twój kod tutaj
+    
+    return 0;
+}`,
+  c: `#include <stdio.h>
+
+int main() {
+    // Twój kod tutaj
+    return 0;
+}`,
+  python: `import sys
+input = sys.stdin.readline
+
+# Twój kod tutaj
+`,
+  java: `import java.util.*;
+
+public class solution {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        // Twój kod tutaj
+    }
+}`,
+  pascal: `program solution;
+begin
+    { Twój kod tutaj }
+end.`
+};
+
+const MODES = {
+  cpp: 'text/x-c++src', c: 'text/x-csrc',
+  python: 'python', java: 'text/x-java', pascal: 'text/x-pascal'
+};
+
+const editor = CodeMirror.fromTextArea(document.getElementById('code-editor'), {
+  theme: 'dracula',
+  lineNumbers: true,
+  indentWithTabs: false,
+  indentUnit: 4,
+  smartIndent: true,
+  matchBrackets: true,
+  autoCloseBrackets: true,
+  lineWrapping: false,
+  mode: MODES['cpp'],
+  extraKeys: {
+    "Ctrl-Enter": submitCode,
+    "Tab": cm => cm.replaceSelection("    "),
+  }
+});
+editor.setValue(STARTER['cpp']);
+
+// Zastosuj zapisany motyw (po inicjalizacji edytora)
+applyTheme(window._initialTheme || 'dark');
+
+// Rozciągnij edytor na cały panel
+function resizeEditor() {
+  const wrap = document.getElementById('editor-wrap');
+  editor.setSize('100%', wrap.clientHeight + 'px');
+}
+window.addEventListener('resize', resizeEditor);
+resizeEditor();
+
+function onLangChange() {
+  const lang = document.getElementById('lang-select').value;
+  editor.setOption('mode', MODES[lang]);
+  if (!editor.getValue().trim()) {
+    editor.setValue(STARTER[lang]);
+  }
+}
+
+// ── Wgrywanie pliku ───────────────────────────────────────
+function loadFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  const extToLang = { cpp:'cpp', cc:'cpp', cxx:'cpp', c:'c', py:'python', java:'java', pas:'pascal' };
+  const lang = extToLang[ext] || 'cpp';
+  document.getElementById('lang-select').value = lang;
+  editor.setOption('mode', MODES[lang]);
+
+  const reader = new FileReader();
+  reader.onload = e => editor.setValue(e.target.result);
+  reader.readAsText(file);
+
+  // Zapamiętaj nazwę pliku do wysłania
+  editor._uploadFilename = file.name;
+}
+
+// ── Wysyłanie do oceny ────────────────────────────────────
+async function submitCode() {
+  const code = editor.getValue();
+  if (!code.trim()) { alert('Edytor jest pusty!'); return; }
+
+  const lang = document.getElementById('lang-select').value;
+  const filename = editor._uploadFilename || '';
+  editor._uploadFilename = null;
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Oceniam…';
+
+  showLoading();
+
+  try {
+    const resp = await fetch('/api/judge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, language: lang, filename }),
+    });
+    const data = await resp.json();
+    if (data.error) { showError(data.error); return; }
+    renderResults(data);
+  } catch (e) {
+    showError('Błąd połączenia z serwerem: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-play-fill"></i> Oceń';
+  }
+}
+
+// ── Renderowanie ──────────────────────────────────────────
+function showLoading() {
+  document.getElementById('results-body').innerHTML = `
+    <div class="spinner-wrap">
+      <div class="spinner-border text-primary" style="width:2.5rem;height:2.5rem;"></div>
+      <div style="color:var(--muted);font-size:.88rem">Trwa ocenianie…</div>
+    </div>`;
+}
+
+function showError(msg) {
+  document.getElementById('results-body').innerHTML = `
+    <div style="padding:16px">
+      <div class="ce-block"><i class="bi bi-exclamation-triangle"></i> ${escHtml(msg)}</div>
+    </div>`;
+}
+
+function scoreColor(pct) {
+  if (pct >= 80) return '#3fb950';
+  if (pct >= 40) return '#d29922';
+  return '#f85149';
+}
+
+function renderResults(d) {
+  const body = document.getElementById('results-body');
+  const pct = d.score_pct;
+  const col = scoreColor(pct);
+
+  let html = `
+    <div class="score-card">
+      <div class="score-number" style="color:${col}">${d.total_points}</div>
+      <div class="score-max">/ ${d.max_points} punktów</div>
+      <div class="score-bar-wrap">
+        <div class="score-bar" style="width:${pct}%;background:${col}"></div>
+      </div>
+      <span class="lang-badge"><i class="bi bi-code-slash"></i> ${escHtml(d.language)}</span>
+    </div>`;
+
+  if (d.compilation_error) {
+    html += `<div class="ce-block"><strong><i class="bi bi-x-circle"></i> Błąd kompilacji:</strong>\n${escHtml(d.compilation_error)}</div>`;
+  }
+
+  if (d.tests && d.tests.length) {
+    html += `<div style="font-size:.78rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">
+      Testy (${d.tests.length}) — kliknij, aby rozwinąć szczegóły
+    </div>`;
+
+    d.tests.forEach((t, i) => {
+      const vClass = `v-${t.verdict}`;
+      const hasDetail = t.expected_preview || t.got_preview || t.error_msg;
+      const chevronId = `chev-${i}`;
+      const detailId  = `det-${i}`;
+
+      html += `
+        <div class="test-item" id="item-${i}" onclick="toggleDetail(${i})" ${!hasDetail ? 'style="cursor:default"' : ''}>
+          <span class="verdict-badge ${vClass}">${t.verdict}</span>
+          <span class="test-name">Test ${escHtml(t.name)}</span>
+          <span class="test-time"><i class="bi bi-clock"></i> ${t.time_ms} ms</span>
+          <span class="test-pts">${t.points}/${t.max_points} pkt</span>
+          ${hasDetail ? `<i class="bi bi-chevron-down" id="${chevronId}" style="color:var(--muted);font-size:.75rem;transition:transform .2s"></i>` : ''}
+        </div>`;
+
+      if (hasDetail) {
+        html += `<div class="test-detail" id="${detailId}">`;
+        if (t.error_msg)        html += `<div class="detail-label">Błąd</div><div class="detail-code">${escHtml(t.error_msg)}</div>`;
+        if (t.expected_preview) html += `<div class="detail-label">Oczekiwano</div><div class="detail-code">${escHtml(t.expected_preview)}</div>`;
+        if (t.got_preview)      html += `<div class="detail-label">Otrzymano</div><div class="detail-code">${escHtml(t.got_preview)}</div>`;
+        html += `</div>`;
+      }
+    });
+  }
+
+  body.innerHTML = html;
+
+  // Animuj pasek
+  requestAnimationFrame(() => {
+    const bar = body.querySelector('.score-bar');
+    if (bar) { bar.style.width = '0'; requestAnimationFrame(() => { bar.style.width = pct + '%'; }); }
+  });
+}
+
+function toggleDetail(i) {
+  const det  = document.getElementById(`det-${i}`);
+  const chev = document.getElementById(`chev-${i}`);
+  const item = document.getElementById(`item-${i}`);
+  if (!det) return;
+  const open = det.classList.toggle('open');
+  if (chev) chev.style.transform = open ? 'rotate(180deg)' : '';
+  if (item) item.classList.toggle('expanded', open);
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Skrót klawiaturowy
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); submitCode(); }
+  if (e.key === 'Escape') closePdf();
+});
+
+// ── Motyw (jasny / ciemny) ───────────────────────────────
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+
+  const icon  = document.getElementById('theme-icon');
+  const label = document.getElementById('theme-label');
+  const isDark = theme === 'dark';
+
+  icon.className  = isDark ? 'bi bi-sun'  : 'bi bi-moon-stars';
+  label.textContent = isDark ? 'Dzienny' : 'Nocny';
+
+  // Przełącz motyw CodeMirror
+  editor.setOption('theme', isDark ? 'dracula' : 'eclipse');
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+// Ustaw ikonę zgodnie z aktualnym motywem przy starcie
+(function() {
+  const saved = localStorage.getItem('theme') || 'dark';
+  // editor może nie być jeszcze gotowy – odłóż na po inicjalizacji
+  window._initialTheme = saved;
+})();
+
+// ── PDF viewer ────────────────────────────────────────────
+function openPdf() {
+  const overlay = document.getElementById('pdf-overlay');
+  const frame   = document.getElementById('pdf-frame');
+  if (!overlay) return;
+  if (!frame.src || frame.src === window.location.href) {
+    frame.src = '/pdf';
+  }
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closePdf() {
+  const overlay = document.getElementById('pdf-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function closePdfOnBg(e) {
+  if (e.target === document.getElementById('pdf-overlay')) closePdf();
+}
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
