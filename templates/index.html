@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sprawdzarka Offline – {{ problem_name }}</title>
+  <title>Sprawdzarka Offline</title>
 
   <!-- Bootstrap 5 -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
@@ -111,6 +111,32 @@
       border-radius: 20px;
       padding: 2px 10px;
       font-size: .78rem;
+    }
+
+    /* ── Selektor zadania ── */
+    select.task-select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      max-width: 300px;
+      transition: all .15s;
+    }
+    select.task-select:focus { outline: none; border-color: var(--accent); }
+    select.task-select:hover { border-color: var(--accent); }
+    select.task-select.single-task {
+      pointer-events: none;
+      border-color: transparent;
+      background: transparent;
+      color: var(--text);
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      padding-right: 14px;
     }
 
     /* ── Stopka ── */
@@ -486,35 +512,36 @@
 <!-- ══ Nagłówek ══════════════════════════════════════════ -->
 <div class="top-bar">
   <div class="logo"><i class="bi bi-braces"></i> Sprawdzarka Offline</div>
-  <div class="meta">{{ problem_name }}</div>
-  <div class="badge-tl"><i class="bi bi-clock"></i> {{ time_limit }}s</div>
+
+  <select id="task-select" class="task-select" onchange="selectTask(this.value)"></select>
+
+  <div class="badge-tl"><i class="bi bi-clock"></i> <span id="tl-val">—</span>s</div>
   <div class="badge-tl" id="tc-badge">
     <i class="bi bi-file-earmark-text"></i>
-    <span id="tc-count">{{ test_count }}</span> test{{ 'y' if test_count in [2,3,4] else ('ów' if test_count != 1 else '') }}
+    <span id="tc-label">—</span>
   </div>
+
   <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Przełącz motyw">
     <i class="bi bi-sun" id="theme-icon"></i>
     <span id="theme-label">Dzienny</span>
   </button>
-  {% if has_pdf %}
-  <button class="pdf-btn" onclick="openPdf()">
+
+  <button class="pdf-btn" id="pdf-btn" onclick="openPdf()" style="display:none">
     <i class="bi bi-file-earmark-pdf"></i> Treść zadania
   </button>
-  {% endif %}
 </div>
 
-{% if has_pdf %}
 <!-- ══ Modal PDF ═══════════════════════════════════════════ -->
 <div class="pdf-modal-overlay" id="pdf-overlay" onclick="closePdfOnBg(event)">
   <div class="pdf-modal">
     <div class="pdf-modal-header">
       <i class="bi bi-file-earmark-pdf pdf-icon-color"></i>
-      <span class="pdf-modal-title">{{ pdf_name }}</span>
+      <span class="pdf-modal-title" id="pdf-title"></span>
       <div class="pdf-modal-actions">
-        <a class="pdf-action-btn" href="/pdf" target="_blank">
+        <a class="pdf-action-btn" id="pdf-newtab" href="#" target="_blank">
           <i class="bi bi-box-arrow-up-right"></i> Otwórz w nowej karcie
         </a>
-        <a class="pdf-action-btn" href="/pdf" download="{{ pdf_name }}">
+        <a class="pdf-action-btn" id="pdf-download" href="#" download="">
           <i class="bi bi-download"></i> Pobierz
         </a>
       </div>
@@ -523,7 +550,6 @@
     <iframe class="pdf-frame" id="pdf-frame" src="" title="Treść zadania"></iframe>
   </div>
 </div>
-{% endif %}
 
 <!-- ══ Główny układ + stopka ════════════════════════════════ -->
 <div class="page-wrap">
@@ -596,12 +622,17 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/pascal/pascal.min.js"></script>
 
 <script>
+// ── Dane zadań (wstrzyknięte przez serwer) ────────────────
+const TASKS_DATA = {{ tasks | tojson }};
+let currentTaskId = {{ default_task_id | tojson }};
+
 // ── Inicjalizacja edytora ─────────────────────────────────
 const STARTER = {
   cpp: `#include <iostream>
 using namespace std;
 
-int main() {
+int main() 
+{
     ios_base::sync_with_stdio(false);
     cin.tie(NULL);
     
@@ -675,6 +706,68 @@ function onLangChange() {
   }
 }
 
+// ── Selektor zadań ───────────────────────────────────────
+function tcLabel(n) {
+  if (n === 1) return '1 test';
+  if (n >= 2 && n <= 4) return `${n} testy`;
+  return `${n} testów`;
+}
+
+function selectTask(id) {
+  currentTaskId = id;
+  const task = TASKS_DATA.find(t => t.id === id);
+  if (!task) return;
+
+  document.getElementById('tl-val').textContent = task.time_limit;
+  document.getElementById('tc-label').textContent = tcLabel(task.test_count);
+  document.title = `Sprawdzarka Offline \u2013 ${task.problem_name}`;
+
+  // Aktualizuj przycisk i linki PDF
+  const pdfBtn = document.getElementById('pdf-btn');
+  if (task.has_pdf) {
+    const pdfUrl = `/pdf?task=${encodeURIComponent(id)}`;
+    pdfBtn.style.display = '';
+    document.getElementById('pdf-newtab').href = pdfUrl;
+    document.getElementById('pdf-download').href = pdfUrl;
+    document.getElementById('pdf-download').download = task.pdf_name || (task.problem_name + '.pdf');
+    document.getElementById('pdf-title').textContent = task.pdf_name || task.problem_name;
+  } else {
+    pdfBtn.style.display = 'none';
+  }
+
+  // Zamknij PDF przy zmianie zadania
+  closePdf();
+
+  // Synchronizuj select
+  document.getElementById('task-select').value = id;
+
+  // Wyczyść wyniki poprzedniego zadania
+  document.getElementById('results-body').innerHTML = `
+    <div class="placeholder">
+      <i class="bi bi-send-arrow-up"></i>
+      <p>Wklej kod lub wgraj plik,<br>następnie kliknij <strong>Oceń</strong>.</p>
+    </div>`;
+}
+
+// Inicjalizacja selektora zadań
+(function initTaskSelect() {
+  const sel = document.getElementById('task-select');
+  TASKS_DATA.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.id;
+    opt.textContent = t.problem_name;
+    sel.appendChild(opt);
+  });
+  sel.value = currentTaskId;
+
+  // Ukryj strzałkę wyboru gdy jest jedno zadanie
+  if (TASKS_DATA.length <= 1) {
+    sel.classList.add('single-task');
+  }
+
+  selectTask(currentTaskId);
+})();
+
 // ── Wgrywanie pliku ───────────────────────────────────────
 function loadFile(event) {
   const file = event.target.files[0];
@@ -712,7 +805,7 @@ async function submitCode() {
     const resp = await fetch('/api/judge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, language: lang, filename }),
+      body: JSON.stringify({ code, language: lang, filename, task_id: currentTaskId }),
     });
     const data = await resp.json();
     if (data.error) { showError(data.error); return; }
@@ -821,7 +914,7 @@ function escHtml(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-// Skrót klawiaturowy
+// Skróty klawiaturowe
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); submitCode(); }
   if (e.key === 'Escape') closePdf();
@@ -851,17 +944,20 @@ function toggleTheme() {
 // Ustaw ikonę zgodnie z aktualnym motywem przy starcie
 (function() {
   const saved = localStorage.getItem('theme') || 'dark';
-  // editor może nie być jeszcze gotowy – odłóż na po inicjalizacji
   window._initialTheme = saved;
 })();
 
 // ── PDF viewer ────────────────────────────────────────────
 function openPdf() {
+  const task = TASKS_DATA.find(t => t.id === currentTaskId);
+  if (!task || !task.has_pdf) return;
+
   const overlay = document.getElementById('pdf-overlay');
   const frame   = document.getElementById('pdf-frame');
-  if (!overlay) return;
-  if (!frame.src || frame.src === window.location.href) {
-    frame.src = '/pdf';
+  const pdfUrl  = `/pdf?task=${encodeURIComponent(currentTaskId)}`;
+
+  if (frame.src !== window.location.origin + pdfUrl) {
+    frame.src = pdfUrl;
   }
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
